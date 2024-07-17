@@ -35,7 +35,7 @@ def main():
     bev_inputs = model.get_bev_pool_input(inputs)
 
     onnx_inputs = {
-        "img": inputs[0],
+        "img": inputs[0][0],
         "ranks_depth": bev_inputs[0],
         "ranks_feat": bev_inputs[1],
         "ranks_bev": bev_inputs[2],
