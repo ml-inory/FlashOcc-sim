@@ -45,6 +45,7 @@ def main():
 
     onnx_outputs = model.forward(onnx_inputs)
     print(onnx_outputs)
+    print(type(onnx_outputs))
 
 
 if __name__ == '__main__':
