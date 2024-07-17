@@ -9,10 +9,58 @@ from onnxruntime_extensions import PyCustomOpDef, onnx_op, get_library_path
 @onnx_op(op_type="AxBevPool",
          inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32],
          outputs=[PyCustomOpDef.dt_float],
-         attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32})
+        #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
+         )
 def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     # output: 1x200x200x64
-    return np.zeros((1, 200, 200, 64), dtype=np.float32)
+    # return np.zeros((1, 200, 200, 64), dtype=np.float32)
+
+    depth = torch.from_numpy(depth)
+    feat = torch.from_numpy(feat)
+
+    ranks_depth = torch.from_numpy(ranks_depth.astype(np.int64))
+    ranks_feat = torch.from_numpy(ranks_feat.astype(np.int64))
+    ranks_bev = torch.from_numpy(ranks_bev.astype(np.int64))
+    n_points = torch.from_numpy(n_points)
+    ranks_depth = ranks_depth[:n_points]
+    ranks_feat = ranks_feat[:n_points]
+    ranks_bev = ranks_bev[:n_points]
+
+    bev_feat_shape = (1, 1, 200, 200, 64)
+    output_dtype = np.float32
+
+    N, _, iH, iW = depth.shape
+    B = 1
+    C = feat.shape[-1]
+    _, oD, oH, oW, _ = bev_feat_shape
+
+    # flatten inputs
+    depth_1d = depth.flatten()
+    feat_2d = feat.reshape(B * N * iH * iW, C)
+
+    # gather depth and feat
+    gathered_depth_1d = torch.gather(input=depth_1d, dim=0, index=ranks_depth)
+    ranks_feat = ranks_feat.reshape(ranks_feat.shape[0], 1).repeat(1, C)
+    gathered_feat = torch.gather(input=feat_2d, dim=0, index=ranks_feat)
+
+    # subtract zp and mul
+    gathered_depth_2d = gathered_depth_1d.reshape(gathered_depth_1d.shape[0], 1)
+    r_mul = gathered_depth_2d * gathered_feat
+
+    # init with zeros
+    r_scatter = torch.full(fill_value=0, size=(B * oD * oH * oW, C), dtype=torch.float32)
+
+    # scatter_add
+    ranks_bev = ranks_bev.reshape(ranks_bev.shape[0], 1).repeat(1, C)
+    r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev, src=r_mul)
+
+    # quant
+
+    # reshape
+    # r_scatter = torch.zeros(B, oD, oH, oW, C, dtype=torch.float32)
+    r = r_scatter.reshape(B, oD, oH, oW, C).numpy()[0]
+
+    return r
 
 
 class LSSViewTransformer:
@@ -222,3 +270,13 @@ class Model:
     
     def forward(self, inputs):
         return self.onnx.run([], inputs)[0]
+    
+
+if __name__ == "__main__":
+    depth_1d = np.fromfile("depth_1d.bin", dtype=np.float32)
+    ranks_depth = np.fromfile("ranks_depth.bin", dtype=np.int32)
+
+    depth_1d = torch.from_numpy(depth_1d)
+    ranks_depth = torch.from_numpy(ranks_depth.astype(np.int64))
+
+    gathered = torch.gather(input=depth_1d, dim=0, index=ranks_depth)

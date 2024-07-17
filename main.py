@@ -21,6 +21,11 @@ def save_onnx_inputs(onnx_inputs):
         value.tofile(os.path.join("inputs", name + ".bin"))
 
 
+def save_onnx_outputs(onnx_outputs):
+    os.makedirs("outputs", exist_ok=True)
+    onnx_outputs.tofile(os.path.join("outputs", "cls_occ_label.bin"))
+
+
 def main():
     args = parse_args()
 
@@ -43,10 +48,9 @@ def main():
     }
     save_onnx_inputs(onnx_inputs)
 
-    # onnx_outputs = model.forward(onnx_inputs)
-    # print(onnx_outputs)
-    # print(type(onnx_outputs))
-
+    onnx_outputs = model.forward(onnx_inputs)
+    save_onnx_outputs(onnx_outputs)
+    
 
 if __name__ == '__main__':
     main()
