@@ -1,3 +1,6 @@
 data/
 *.tgz
 *.onnx
+inputs
+outputs
+__pycache__
