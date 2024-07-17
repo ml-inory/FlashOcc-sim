@@ -180,7 +180,7 @@ class LSSViewTransformer:
         n_points = len(ranks_bev)
         ranks_ones = torch.ones(num_points - n_points, dtype=torch.int, device=coor.device)
         ranks_depth = torch.cat((ranks_depth, ranks_ones * num_points), 0)
-        ranks_feat = torch.cat((ranks_feat, ranks_ones * num_points // D), 0)
+        ranks_feat = torch.cat((ranks_feat, ranks_ones * (num_points // D)), 0)
         ranks_bev = torch.cat((ranks_bev, ranks_ones * 0), 0)
 
         return ranks_depth.int().contiguous().numpy(), ranks_feat.int().contiguous().numpy(), ranks_bev.int().contiguous().numpy(), torch.tensor([n_points]).int().numpy()
