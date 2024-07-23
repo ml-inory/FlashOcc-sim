@@ -2,6 +2,9 @@ import numpy as np
 import cv2
 import torch
 import open3d as o3d
+import os
+
+__all__ = ['visualize']
 
 
 NOT_OBSERVED = -1
@@ -223,76 +226,10 @@ def generate_the_ego_car():
     return ego_point_xyz
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Visualize the predicted '
-                                     'result of nuScenes')
-    parser.add_argument(
-        'res', help='Path to the predicted result')
-    parser.add_argument(
-        '--canva-size', type=int, default=1000, help='Size of canva in pixel')
-    parser.add_argument(
-        '--vis-frames',
-        type=int,
-        default=500,
-        help='Number of frames for visualization')
-    parser.add_argument(
-        '--scale-factor',
-        type=int,
-        default=4,
-        help='Trade-off between image-view and bev in size of '
-        'the visualized canvas')
-    parser.add_argument(
-        '--version',
-        type=str,
-        default='val',
-        help='Version of nuScenes dataset')
-    parser.add_argument('--draw-gt', action='store_true')
-    parser.add_argument(
-        '--root_path',
-        type=str,
-        default='./data/nuscenes',
-        help='Path to nuScenes dataset')
-    parser.add_argument(
-        '--save_path',
-        type=str,
-        default='./vis',
-        help='Path to save visualization results')
-    parser.add_argument(
-        '--format',
-        type=str,
-        default='image',
-        choices=['video', 'image'],
-        help='The desired format of the visualization result')
-    parser.add_argument(
-        '--fps', type=int, default=10, help='Frame rate of video')
-    parser.add_argument(
-        '--video-prefix', type=str, default='vis', help='name of video')
-    args = parser.parse_args()
-    return args
-
-
-def visualize():
-    args = parse_args()
-    # load predicted results
-    results_dir = args.res
-
-    # load dataset information
-    info_path = \
-        args.root_path + '/bevdetv2-nuscenes_infos_%s.pkl' % args.version
-    dataset = pickle.load(open(info_path, 'rb'))
+def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=1000):
     # prepare save path and medium
-    vis_dir = args.save_path
-    if not os.path.exists(vis_dir):
-        os.makedirs(vis_dir)
+    os.makedirs(vis_dir, exist_ok=True)
     print('saving visualized result to %s' % vis_dir)
-    scale_factor = args.scale_factor
-    canva_size = args.canva_size
-    if args.format == 'video':
-        fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-        vout = cv2.VideoWriter(
-            os.path.join(vis_dir, '%s.mp4' % args.video_prefix), fourcc,
-            args.fps, (int(1600 / scale_factor * 3),
-                       int(900 / scale_factor * 2 + canva_size)))
 
     views = [
         'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT',
@@ -303,103 +240,66 @@ def visualize():
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window()
 
-    for cnt, info in enumerate(
-            dataset['infos'][:min(args.vis_frames, len(dataset['infos']))]):
-        if cnt % 10 == 0:
-            print('%d/%d' % (cnt, min(args.vis_frames, len(dataset['infos']))))
+    # load imgs
+    imgs = []
+    for view in views:
+        img = cv2.imread(info[view]['filename'])
+        imgs.append(img)
 
-        scene_name = info['scene_name']
-        sample_token = info['token']
+    # occ_canvas
+    voxel_show = pred_occ != FREE_LABEL
+    voxel_size = VOXEL_SIZE
+    vis = show_occ(torch.from_numpy(pred_occ), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
+                    offset=[0, pred_occ.shape[0] * voxel_size[0] * 1.2 * 0, 0])
 
-        pred_occ_path = os.path.join(results_dir, scene_name, sample_token, 'pred.npz')
-        gt_occ_path = info['occ_path']
+    view_control = vis.get_view_control()
 
-        pred_occ = np.load(pred_occ_path)['pred']
-        gt_data = np.load(os.path.join(args.root_path, gt_occ_path, 'labels.npz'))
-        voxel_label = gt_data['semantics']
-        lidar_mask = gt_data['mask_lidar']
-        camera_mask = gt_data['mask_camera']
+    look_at = np.array([-0.185, 0.513, 3.485])
+    front = np.array([-0.974, -0.055, 0.221])
+    up = np.array([0.221, 0.014, 0.975])
+    zoom = np.array([0.08])
 
-        # load imgs
-        imgs = []
-        for view in views:
-            img = cv2.imread(info['cams'][view]['data_path'])
-            imgs.append(img)
+    view_control.set_lookat(look_at)
+    view_control.set_front(front)
+    view_control.set_up(up)
+    view_control.set_zoom(zoom)
 
-        # occ_canvas
-        voxel_show = np.logical_and(pred_occ != FREE_LABEL, camera_mask)
-        # voxel_show = pred_occ != FREE_LABEL
-        voxel_size = VOXEL_SIZE
-        vis = show_occ(torch.from_numpy(pred_occ), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-                       offset=[0, pred_occ.shape[0] * voxel_size[0] * 1.2 * 0, 0])
+    opt = vis.get_render_option()
+    opt.background_color = np.asarray([1, 1, 1])
+    opt.line_width = 5
 
-        if args.draw_gt:
-            voxel_show = np.logical_and(voxel_label != FREE_LABEL, camera_mask)
-            vis = show_occ(torch.from_numpy(voxel_label), torch.from_numpy(voxel_show), voxel_size=voxel_size, vis=vis,
-                           offset=[0, voxel_label.shape[0] * voxel_size[0] * 1.2 * 1, 0])
+    vis.poll_events()
+    vis.update_renderer()
+    vis.run()
 
-        view_control = vis.get_view_control()
+    # if args.format == 'image':
+    #     out_dir = os.path.join(vis_dir, f'{scene_name}', f'{sample_token}')
+    #     mmcv.mkdir_or_exist(out_dir)
+    #     vis.capture_screen_image(os.path.join(vis_dir, 'screen_occ.png'), do_render=True)
 
-        look_at = np.array([-0.185, 0.513, 3.485])
-        front = np.array([-0.974, -0.055, 0.221])
-        up = np.array([0.221, 0.014, 0.975])
-        zoom = np.array([0.08])
+    occ_canvas = vis.capture_screen_float_buffer(do_render=True)
+    occ_canvas = np.asarray(occ_canvas)
+    occ_canvas = (occ_canvas * 255).astype(np.uint8)
+    occ_canvas = occ_canvas[..., [2, 1, 0]]
+    occ_canvas_resize = cv2.resize(occ_canvas, (canvas_size, canvas_size), interpolation=cv2.INTER_CUBIC)
 
-        view_control.set_lookat(look_at)
-        view_control.set_front(front)
-        view_control.set_up(up)
-        view_control.set_zoom(zoom)
+    vis.clear_geometries()
 
-        opt = vis.get_render_option()
-        opt.background_color = np.asarray([1, 1, 1])
-        opt.line_width = 5
+    big_img = np.zeros((900 * 2 + canvas_size * scale_factor, 1600 * 3, 3),
+                    dtype=np.uint8)
+    big_img[:900, :, :] = np.concatenate(imgs[:3], axis=1)
+    img_back = np.concatenate(
+        [imgs[3][:, ::-1, :], imgs[4][:, ::-1, :], imgs[5][:, ::-1, :]],
+        axis=1)
+    big_img[900 + canvas_size * scale_factor:, :, :] = img_back
+    big_img = cv2.resize(big_img, (int(1600 / scale_factor * 3),
+                                    int(900 / scale_factor * 2 + canvas_size)))
+    w_begin = int((1600 * 3 / scale_factor - canvas_size) // 2)
+    big_img[int(900 / scale_factor):int(900 / scale_factor) + canvas_size,
+            w_begin:w_begin + canvas_size, :] = occ_canvas_resize
 
-        vis.poll_events()
-        vis.update_renderer()
-        vis.run()
-
-        # if args.format == 'image':
-        #     out_dir = os.path.join(vis_dir, f'{scene_name}', f'{sample_token}')
-        #     mmcv.mkdir_or_exist(out_dir)
-        #     vis.capture_screen_image(os.path.join(out_dir, 'screen_occ.png'), do_render=True)
-
-        occ_canvas = vis.capture_screen_float_buffer(do_render=True)
-        occ_canvas = np.asarray(occ_canvas)
-        occ_canvas = (occ_canvas * 255).astype(np.uint8)
-        occ_canvas = occ_canvas[..., [2, 1, 0]]
-        occ_canvas_resize = cv2.resize(occ_canvas, (canva_size, canva_size), interpolation=cv2.INTER_CUBIC)
-
-        vis.clear_geometries()
-
-        big_img = np.zeros((900 * 2 + canva_size * scale_factor, 1600 * 3, 3),
-                       dtype=np.uint8)
-        big_img[:900, :, :] = np.concatenate(imgs[:3], axis=1)
-        img_back = np.concatenate(
-            [imgs[3][:, ::-1, :], imgs[4][:, ::-1, :], imgs[5][:, ::-1, :]],
-            axis=1)
-        big_img[900 + canva_size * scale_factor:, :, :] = img_back
-        big_img = cv2.resize(big_img, (int(1600 / scale_factor * 3),
-                                       int(900 / scale_factor * 2 + canva_size)))
-        w_begin = int((1600 * 3 / scale_factor - canva_size) // 2)
-        big_img[int(900 / scale_factor):int(900 / scale_factor) + canva_size,
-                w_begin:w_begin + canva_size, :] = occ_canvas_resize
-
-        if args.format == 'image':
-            out_dir = os.path.join(vis_dir, f'{scene_name}', f'{sample_token}')
-            mmcv.mkdir_or_exist(out_dir)
-            for i, img in enumerate(imgs):
-                cv2.imwrite(os.path.join(out_dir, f'img{i}.png'), img)
-            cv2.imwrite(os.path.join(out_dir, 'occ.png'), occ_canvas)
-            cv2.imwrite(os.path.join(out_dir, 'overall.png'), big_img)
-        elif args.format == 'video':
-            cv2.putText(big_img, f'{cnt:{cnt}}', (5, 15), fontFace=cv2.FONT_HERSHEY_COMPLEX, color=(0, 0, 0),
-                        fontScale=0.5)
-            cv2.putText(big_img, f'{scene_name}', (5, 35), fontFace=cv2.FONT_HERSHEY_COMPLEX, color=(0, 0, 0),
-                        fontScale=0.5)
-            cv2.putText(big_img, f'{sample_token[:5]}', (5, 55), fontFace=cv2.FONT_HERSHEY_COMPLEX, color=(0, 0, 0),
-                        fontScale=0.5)
-            vout.write(big_img)
-
-    if args.format == 'video':
-        vout.release()
-    vis.destroy_window()
+    for i, img in enumerate(imgs):
+        cv2.imwrite(os.path.join(vis_dir, f'img{i}.png'), img)
+    cv2.imwrite(os.path.join(vis_dir, 'occ.png'), occ_canvas)
+    cv2.imwrite(os.path.join(vis_dir, 'overall.png'), big_img)
+    print("Saved visualize result")

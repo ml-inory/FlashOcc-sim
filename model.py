@@ -15,8 +15,8 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     # output: 1x200x200x64
     # return np.zeros((1, 200, 200, 64), dtype=np.float32)
 
-    depth = torch.from_numpy(depth)
-    feat = torch.from_numpy(feat)
+    depth = torch.from_numpy(depth.astype(np.float32))
+    feat = torch.from_numpy(feat.astype(np.float32))
 
     ranks_depth = torch.from_numpy(ranks_depth.astype(np.int64))
     ranks_feat = torch.from_numpy(ranks_feat.astype(np.int64))
@@ -39,26 +39,23 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     feat_2d = feat.reshape(B * N * iH * iW, C)
 
     # gather depth and feat
-    gathered_depth_1d = torch.gather(input=depth_1d, dim=0, index=ranks_depth)
+    gathered_depth_1d = torch.gather(input=depth_1d, dim=0, index=ranks_depth.long())
     ranks_feat = ranks_feat.reshape(ranks_feat.shape[0], 1).repeat(1, C)
-    gathered_feat = torch.gather(input=feat_2d, dim=0, index=ranks_feat)
+    gathered_feat = torch.gather(input=feat_2d, dim=0, index=ranks_feat.long())
 
     # subtract zp and mul
     gathered_depth_2d = gathered_depth_1d.reshape(gathered_depth_1d.shape[0], 1)
     r_mul = gathered_depth_2d * gathered_feat
 
     # init with zeros
-    r_scatter = torch.full(fill_value=0, size=(B * oD * oH * oW, C), dtype=torch.float32)
+    r_scatter = torch.full(fill_value=0, size=(B * oD * oW * oH, C), dtype=torch.float32, device=r_mul.device)
 
     # scatter_add
     ranks_bev = ranks_bev.reshape(ranks_bev.shape[0], 1).repeat(1, C)
-    r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev, src=r_mul)
-
-    # quant
+    r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev.long(), src=r_mul)
 
     # reshape
-    # r_scatter = torch.zeros(B, oD, oH, oW, C, dtype=torch.float32)
-    r = r_scatter.reshape(B, oD, oH, oW, C).numpy()[0]
+    r = r_scatter.reshape(B, oD, oW, oH, C).numpy()[0]
 
     return r
 
@@ -199,12 +196,14 @@ class LSSViewTransformer:
         coor = ((coor - self.grid_lower_bound.to(coor)) /
                 self.grid_interval.to(coor))
         coor = coor.long().view(num_points, 3)      # (B, N, D, fH, fW, 3) --> (B*N*D*fH*fW, 3)
+        # print(f"coor = {coor}")
         # (B, N*D*fH*fW) --> (B*N*D*fH*fW, 1)
         batch_idx = torch.arange(0, B).reshape(B, 1). \
             expand(B, num_points // B).reshape(num_points, 1).to(coor)
         coor = torch.cat((coor, batch_idx), 1)      # (B*N*D*fH*fW, 4)   4: (x, y, z, batch_id)
 
         # filter out points that are outside box
+        # print(f"self.grid_size = {self.grid_size}")
         kept = (coor[:, 0] >= 0) & (coor[:, 0] < self.grid_size[0]) & \
                (coor[:, 1] >= 0) & (coor[:, 1] < self.grid_size[1]) & \
                (coor[:, 2] >= 0) & (coor[:, 2] < self.grid_size[2])
@@ -214,16 +213,21 @@ class LSSViewTransformer:
         # (N_points, 4), (N_points, ), (N_points, )
         coor, ranks_depth, ranks_feat = \
             coor[kept], ranks_depth[kept], ranks_feat[kept]
+        
+        # print(f"coor = {coor}")
 
         # get tensors from the same voxel next to each other
+        # print(f"coor[:, 3] = {coor[:, 3]}")
         ranks_bev = coor[:, 3] * (
             self.grid_size[2] * self.grid_size[1] * self.grid_size[0])
         ranks_bev += coor[:, 2] * (self.grid_size[1] * self.grid_size[0])
         ranks_bev += coor[:, 1] * self.grid_size[0] + coor[:, 0]
+        # print(f"ranks_bev = {ranks_bev}")
         order = ranks_bev.argsort()
         # (N_points, ), (N_points, ), (N_points, )
         ranks_bev, ranks_depth, ranks_feat = \
             ranks_bev[order], ranks_depth[order], ranks_feat[order]
+        # print(f"sorted ranks_bev = {ranks_bev}")
 
         n_points = len(ranks_bev)
         ranks_ones = torch.ones(num_points - n_points, dtype=torch.int, device=coor.device)
@@ -269,7 +273,7 @@ class Model:
         return self.img_view_transformer.voxel_pooling_prepare_ax(coor)
     
     def forward(self, inputs):
-        return self.onnx.run([], inputs)[0]
+        return self.onnx.run([], inputs)[0].astype(np.int32)[0]
     
 
 if __name__ == "__main__":

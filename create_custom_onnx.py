@@ -51,13 +51,12 @@ def create_ax_bev(graph):
     n_points = helper.make_tensor_value_info("n_points", TensorProto.INT32, [1])
 
     graph.input.extend([ranks_depth, ranks_feat, ranks_bev, n_points])
-    print(f"input_num: {len(graph.input)}")
 
     
 def main():
     args = parse_args()
     input_onnx = onnx.load(args.input)
-
+    
     graph = input_onnx.graph
     remove_origin_bev(graph)
     create_ax_bev(graph)
@@ -72,7 +71,7 @@ def main():
     model = version_converter.convert_version(model, 11)
     # assert True == onnx.checker.check_model(input_onnx)
     onnx.save(model, args.output)
-
+    print(f"Saved ax onnx to {args.output}")
 
 if __name__ == '__main__':
     main()

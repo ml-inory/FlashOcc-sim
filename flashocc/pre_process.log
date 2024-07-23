@@ -1,0 +1,25 @@
+graph LR
+rdma0 -->|165376| rdma_gen_pad0
+rdma0["rdma0<br>"]
+rdma_gen_pad0 -->|165376| concat10
+rdma_gen_pad0["rdma_gen_pad0<br>"]
+concat10 -->|165376| unpool0
+concat10["concat10<br>"]
+unpool0 -->|165376| concat3210
+unpool0["unpool0<br>  en = false<br>"]
+concat3210 -->|165376| concat76543210
+concat3210["concat3210<br>"]
+concat76543210 -->|165376| conv_shuffle
+concat76543210["concat76543210<br>"]
+conv_shuffle -->|165376| conv_reshape
+conv_shuffle["conv_shuffle<br>  en = false<br>"]
+conv_reshape -->|165376| conv_trueint
+conv_reshape["conv_reshape<br>  bitwidth = 1<br>"]
+conv_trueint -->|165376| chpad
+conv_trueint["conv_trueint<br>  bitwidth = 16<br>"]
+chpad -->|165376| conv_batchpad
+chpad["chpad<br>  in_bit = 128<br>  pixel_num = 2<br>"]
+conv_batchpad -->|165376| dw_nxm_pad
+conv_batchpad["conv_batchpad<br>  pad_value = 32003<br>  times = 1<br>  cycles = 1<br>  pad_cycles = 1<br>"]
+dw_nxm_pad -->|165376| pre_process_res
+dw_nxm_pad["dw_nxm_pad<br>"]

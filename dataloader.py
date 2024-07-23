@@ -91,7 +91,7 @@ class Dataloader:
             if basename in data['filename']:
                 info['cur_type'] = sensor_type
 
-        return self.prepare_image_inputs(info)
+        return self.prepare_image_inputs(info), info
     
     def get_sensor_transforms(self, cam_data):
         w, x, y, z = cam_data['sensor2ego_rotation']      # 四元数格式

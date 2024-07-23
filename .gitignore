@@ -5,3 +5,5 @@ inputs
 outputs
 __pycache__
 *.bin
+vis_result
+*.npy
