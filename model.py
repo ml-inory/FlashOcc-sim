@@ -6,14 +6,18 @@ import onnxruntime, onnx
 from onnxruntime_extensions import PyCustomOpDef, onnx_op, get_library_path
 
 
-@onnx_op(op_type="AxBevPool",
+@onnx_op(op_type="BEVPoolV2",
          inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32],
          outputs=[PyCustomOpDef.dt_float],
         #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
          )
 def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     # output: 1x200x200x64
-    # return np.zeros((1, 200, 200, 64), dtype=np.float32)
+    # return np.zeros((1, 1, 200, 200, 64), dtype=np.float32)
+
+    if len(depth.shape) < 5:
+        depth = depth.unsqueeze(0)
+        feat = feat.unsqueeze(0)
 
     depth = torch.from_numpy(depth.astype(np.float32))
     feat = torch.from_numpy(feat.astype(np.float32))
@@ -29,8 +33,7 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     bev_feat_shape = (1, 1, 200, 200, 64)
     output_dtype = np.float32
 
-    N, _, iH, iW = depth.shape
-    B = 1
+    B, N, _, iH, iW = depth.shape
     C = feat.shape[-1]
     _, oD, oH, oW, _ = bev_feat_shape
 
@@ -55,9 +58,22 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev.long(), src=r_mul)
 
     # reshape
-    r = r_scatter.reshape(B, oD, oW, oH, C).numpy()[0]
+    r = r_scatter.reshape(B, oD, oW, oH, C).numpy()
 
     return r
+
+
+@onnx_op(op_type="AxFullyConnected",
+         inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_float],
+         outputs=[PyCustomOpDef.dt_float],
+        #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
+         )
+def AxFullyConnected(x, w, b):
+    t_x = torch.tensor(x, dtype=torch.float64)
+    t_w = torch.tensor(w, dtype=torch.float64)
+    t_b = torch.tensor(b, dtype=torch.float64)
+    y = torch.nn.functional.linear(t_x, t_w, t_b).numpy()
+    return y
 
 
 class LSSViewTransformer:

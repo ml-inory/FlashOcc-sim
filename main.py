@@ -160,7 +160,6 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
 
 
 def vis_occ(semantics):
-    print(semantics.shape)
     # simple visualization of result in BEV
     semantics_valid = np.logical_not(semantics == 17)
     d = np.arange(16).reshape(1, 1, 16)
@@ -197,7 +196,7 @@ def main():
     bev_inputs = model.get_bev_pool_input(inputs)
 
     onnx_inputs = {
-        "img": inputs[0][0],
+        "img": inputs[0],
         "ranks_depth": bev_inputs[0],
         "ranks_feat": bev_inputs[1],
         "ranks_bev": bev_inputs[2],
@@ -218,41 +217,35 @@ def main():
     #     "n_points": np.fromfile("flashocc/input/0/n_points.bin", dtype=np.int32),
     # }
 
-    inputs_data = np.load("bev_inputs_data.npy", allow_pickle=True).tolist()
-    # print(f"ranks_depth: {inputs_data['ranks_depth']}")
-    # print(f"ranks_feat: {inputs_data['ranks_feat']}")
-    # print(f"ranks_bev: {inputs_data['ranks_bev']}")
-    # print(f"n_points: {inputs_data['n_points']}")
-    print(inputs_data['depth'])
-    # r = AxBevPool(**inputs_data)
-    outputs_data = np.load("bev_outputs_data.npy", allow_pickle=True).tolist()["r"]
+    # inputs_data = np.load("bev_inputs_data.npy", allow_pickle=True).tolist()
+    # print(inputs_data['depth'])
+    # outputs_data = np.load("bev_outputs_data.npy", allow_pickle=True).tolist()["r"]
 
-    depth_scale = 0.003921568859368563
-    feat_scale = 0.4500899910926819
-    r_scale = 0.005210042465478182
-    depth_zp = 0
-    feat_zp = 88
-    r_zp = 32003
-    inputs_data["depth"] = (inputs_data["depth"][0].astype(np.float32) - depth_zp) * depth_scale
-    inputs_data["feat"] = (inputs_data["feat"][0].astype(np.float32) - feat_zp) * feat_scale
-    # inputs_data["depth"] = inputs_data["depth"][0].astype(np.float32)
-    # inputs_data["feat"] = inputs_data["feat"][0].astype(np.float32)
-    outputs_data = (outputs_data.astype(np.float32) - r_zp) * r_scale
+    # depth_scale = 0.003921568859368563
+    # feat_scale = 0.4500899910926819
+    # r_scale = 0.005210042465478182
+    # depth_zp = 0
+    # feat_zp = 88
+    # r_zp = 32003
+    # inputs_data["depth"] = (inputs_data["depth"][0].astype(np.float32) - depth_zp) * depth_scale
+    # inputs_data["feat"] = (inputs_data["feat"][0].astype(np.float32) - feat_zp) * feat_scale
+    # outputs_data = (outputs_data.astype(np.float32) - r_zp) * r_scale
     
     # r = AxBevPool(**inputs_data)
 
-    onnx_outputs = model.forward({"317": outputs_data[0]})
+    # onnx_outputs = model.forward({"317": outputs_data[0]})
 
-    # onnx_outputs = model.forward(inputs_data)
+    onnx_outputs = model.forward(onnx_inputs)
     # save_onnx_outputs(onnx_outputs, "nobev_result.bin")
-    # print(f"cls_occ_label: {onnx_outputs}")
+    print(f"cls_occ_label: {onnx_outputs}")
 
     result = vis_occ(onnx_outputs)
-    cv2.imshow("result", result)
-    cv2.waitKey(0)
+    cv2.imwrite("result.jpg", result)
+    # cv2.imshow("result", result)
+    # cv2.waitKey(0)
 
     # gt_outputs = np.fromfile("flashocc/output/0/cls_occ_label.bin", dtype=np.int32).reshape((1, 200, 200, 16))
-    # visualize(onnx_outputs, info)
+    visualize(onnx_outputs, info)
 
     # print(np.sum(onnx_outputs == gt_outputs))
 

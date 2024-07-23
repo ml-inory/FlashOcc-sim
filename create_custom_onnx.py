@@ -52,23 +52,32 @@ def create_ax_bev(graph):
 
     graph.input.extend([ranks_depth, ranks_feat, ranks_bev, n_points])
 
+
+def change_domain(graph):
+    for i, node in enumerate(graph.node):
+        if node.op_type in ["BEVPoolV2", "AxFullyConnected"]:
+            node.domain = "ai.onnx.contrib"
+            print(f"Change domain of {node.name}")
+    return graph
+
     
 def main():
     args = parse_args()
     input_onnx = onnx.load(args.input)
     
     graph = input_onnx.graph
-    remove_origin_bev(graph)
-    create_ax_bev(graph)
+    graph = change_domain(graph)
+    # remove_origin_bev(graph)
+    # create_ax_bev(graph)
 
     model = onnx.helper.make_model(
         graph,
         opset_imports=[
-            onnx.helper.make_opsetid('', 11),
-            onnx.helper.make_opsetid('ai.onnx.contrib', 1)
+            onnx.helper.make_opsetid('', 16),
+            onnx.helper.make_opsetid('ai.onnx.contrib', 16)
             ],
     )
-    model = version_converter.convert_version(model, 11)
+    model = version_converter.convert_version(model, 16)
     # assert True == onnx.checker.check_model(input_onnx)
     onnx.save(model, args.output)
     print(f"Saved ax onnx to {args.output}")
