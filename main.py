@@ -211,7 +211,7 @@ def main():
     result = vis_occ(onnx_outputs)
     cv2.imwrite("result.jpg", result)
 
-    visualize(onnx_outputs, info)
+    visualize(onnx_outputs, info, visible=False)
 
 
 if __name__ == '__main__':

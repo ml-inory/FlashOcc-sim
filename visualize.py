@@ -226,7 +226,7 @@ def generate_the_ego_car():
     return ego_point_xyz
 
 
-def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=1000):
+def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=1000, visible=False):
     # prepare save path and medium
     os.makedirs(vis_dir, exist_ok=True)
     print('saving visualized result to %s' % vis_dir)
@@ -238,7 +238,7 @@ def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=
     print('start visualizing results')
 
     vis = o3d.visualization.VisualizerWithKeyCallback()
-    vis.create_window()
+    vis.create_window(visible=visible)
 
     # load imgs
     imgs = []
@@ -302,4 +302,4 @@ def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=
         cv2.imwrite(os.path.join(vis_dir, f'img{i}.png'), img)
     cv2.imwrite(os.path.join(vis_dir, 'occ.png'), occ_canvas)
     cv2.imwrite(os.path.join(vis_dir, 'overall.png'), big_img)
-    print("Saved visualize result")
+    print(f"Saved visualize result to {vis_dir}")
