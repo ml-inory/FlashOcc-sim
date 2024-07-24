@@ -229,7 +229,6 @@ def generate_the_ego_car():
 def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=1000, visible=False):
     # prepare save path and medium
     os.makedirs(vis_dir, exist_ok=True)
-    print('saving visualized result to %s' % vis_dir)
 
     views = [
         'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT',
@@ -268,9 +267,10 @@ def visualize(pred_occ, info, vis_dir="vis_result", scale_factor=4, canvas_size=
     opt.background_color = np.asarray([1, 1, 1])
     opt.line_width = 5
 
-    vis.poll_events()
-    vis.update_renderer()
-    vis.run()
+    if visible:
+        vis.poll_events()
+        vis.update_renderer()
+        vis.run()
 
     # if args.format == 'image':
     #     out_dir = os.path.join(vis_dir, f'{scene_name}', f'{sample_token}')

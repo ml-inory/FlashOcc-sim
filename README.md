@@ -21,7 +21,7 @@ data
 
 ## 模型
 
-已提前转换好，从[这里]()下载
+已提前转换好，从[这里](https://github.com/ml-inory/FlashOcc-sim/releases/download/v1.0/bevdet_ax.onnx)下载
 
 ## 运行
 
