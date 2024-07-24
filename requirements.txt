@@ -1,0 +1,9 @@
+torch
+numpy
+opencv-python
+pillow
+open3d
+pyquaternion
+onnx
+onnxruntime
+onnxruntime_extensions
