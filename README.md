@@ -14,10 +14,10 @@
 
 data  
 -- nuscenes  
----- maps
----- samples
----- sweeps
----- v1.0-mini
+---- maps  
+---- samples  
+---- sweeps  
+---- v1.0-mini  
 
 ## 模型
 
@@ -26,3 +26,13 @@ data
 ## 运行
 
 `python main.py --img 图片路径`
+
+## 示例
+
+`python main.py --img data\\nuscenes\samples\\CAM_BACK\\n008-2018-08-01-15-16-36-0400__CAM_BACK__1533151603537558.jpg`
+
+运行完成后会在根目录生成sementics.jpg和vis_result文件夹下的图片，如下：
+
+![sementics](/fig/sementics.jpg)
+
+![overall](/fig/overall.png)
