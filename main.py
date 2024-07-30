@@ -46,11 +46,13 @@ def save_onnx_inputs(onnx_inputs):
     os.makedirs("inputs", exist_ok=True)
     for name, value in onnx_inputs.items():
         value.tofile(os.path.join("inputs", name + ".bin"))
+    print("Saved input data to inputs folder")
 
 
 def save_onnx_outputs(onnx_outputs, name="cls_occ_label.bin"):
     os.makedirs("outputs", exist_ok=True)
     onnx_outputs.tofile(os.path.join("outputs", name))
+    print("Saved output data to outputs folder")
 
 
 def AxQuantizedBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
@@ -79,7 +81,7 @@ def AxQuantizedBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points
     output_dtype = np.uint16
 
     B, N, _, iH, iW = depth.shape
-
+    
     C = feat.shape[-1]
     _, oD, oH, oW, _ = bev_feat_shape
 
@@ -97,28 +99,19 @@ def AxQuantizedBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points
     r_mul = (gathered_depth_2d - depth_zp) * (gathered_feat - feat_zp)
 
     # init with zeros
-    r_scatter = torch.full(
-        fill_value=0, size=(B * oD * oH * oW, C), dtype=torch.float32
-    )
+    r_scatter = torch.full(fill_value=0, size=(B * oD * oH * oW, C), dtype=torch.float32)
 
     # scatter_add
     ranks_bev = ranks_bev.reshape(ranks_bev.shape[0], 1).repeat(1, C)
-    r_scatter = torch.scatter_add(
-        input=r_scatter, dim=0, index=ranks_bev, src=r_mul.float()
-    )
+    r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev, src=r_mul.float())
 
     # quant
     r_quant = r_scatter * depth_scale * feat_scale / r_scale + r_zp
 
     # reshape
     r = r_quant.reshape(B, oD, oH, oW, C).numpy()
-    r = (
-        np.round(r)
-        .clip(np.iinfo(output_dtype).min, np.iinfo(output_dtype).max)
-        .astype(output_dtype)
-    )
+    r = np.round(r).clip(np.iinfo(output_dtype).min, np.iinfo(output_dtype).max).astype(output_dtype)
     return r
-
 
 def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     # output: 1x200x200x64
@@ -157,18 +150,11 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     r_mul = gathered_depth_2d * gathered_feat
 
     # init with zeros
-    r_scatter = torch.full(
-        fill_value=0,
-        size=(B * oD * oW * oH, C),
-        dtype=torch.float32,
-        device=r_mul.device,
-    )
+    r_scatter = torch.full(fill_value=0, size=(B * oD * oW * oH, C), dtype=torch.float32, device=r_mul.device)
 
     # scatter_add
     ranks_bev = ranks_bev.reshape(ranks_bev.shape[0], 1).repeat(1, C)
-    r_scatter = torch.scatter_add(
-        input=r_scatter, dim=0, index=ranks_bev.long(), src=r_mul
-    )
+    r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev.long(), src=r_mul)
 
     # reshape
     r = r_scatter.reshape(B, oD, oW, oH, C)
@@ -230,7 +216,8 @@ def main():
     )
 
     result = vis_occ(onnx_outputs)
-    cv2.imwrite("result.jpg", result)
+    cv2.imwrite("sementics.jpg", result)
+    print("Saved sementics to sementics.jpg")
 
     visualize(onnx_outputs, info, visible=False)
 
