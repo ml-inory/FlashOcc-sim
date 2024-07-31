@@ -33,7 +33,7 @@ Run `python export_onnx.py` and you will get bevdet_ax.onnx
 
 ## Inference
 
-`python main.py --img 图片路径`
+`python main.py --img image_path`
 
 
 ## Example
