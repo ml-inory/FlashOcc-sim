@@ -6,8 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-
-__all__ = ["ResNet50"]
+__all__ = ["ResNet50", "CustomResNet"]
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
@@ -260,3 +259,69 @@ class ResNet(nn.Module):
 class ResNet50(ResNet):
     def __init__(self, block=Bottleneck, layers=[3, 4, 6, 3]):
         super(ResNet50, self).__init__(block, layers)
+
+
+class CustomResNet(nn.Module):
+    def __init__(
+            self,
+            numC_input=64,
+            num_layer=[2, 2, 2],
+            num_channels=[128, 256, 512],
+            stride=[2, 2, 2],
+            backbone_output_ids=None,
+            with_cp=False,
+            block_type='Basic',
+    ):
+        super(CustomResNet, self).__init__()
+        # build backbone
+        assert len(num_layer) == len(stride)
+        num_channels = [numC_input*2**(i+1) for i in range(len(num_layer))] \
+            if num_channels is None else num_channels
+        self.backbone_output_ids = range(len(num_layer)) \
+            if backbone_output_ids is None else backbone_output_ids
+
+        layers = []
+        if block_type == 'BottleNeck':
+            curr_numC = numC_input
+            for i in range(len(num_layer)):
+                # 在第一个block中对输入进行downsample
+                layer = [Bottleneck(inplanes=curr_numC, planes=num_channels[i]//4, stride=stride[i],
+                                    downsample=nn.Conv2d(curr_numC, num_channels[i], 3, stride[i], 1))]
+                curr_numC = num_channels[i]
+                layer.extend([Bottleneck(inplanes=curr_numC, planes=num_channels[i]//4, stride=1,
+                                         downsample=None) for _ in range(num_layer[i] - 1)])
+                layers.append(nn.Sequential(*layer))
+        elif block_type == 'Basic':
+            curr_numC = numC_input
+            for i in range(len(num_layer)):
+                # 在第一个block中对输入进行downsample
+                layer = [BasicBlock(inplanes=curr_numC, planes=num_channels[i], stride=stride[i],
+                                    downsample=nn.Conv2d(curr_numC, num_channels[i], 3, stride[i], 1))]
+                curr_numC = num_channels[i]
+                layer.extend([BasicBlock(inplanes=curr_numC, planes=num_channels[i], stride=1,
+                                          downsample=None) for _ in range(num_layer[i] - 1)])
+                layers.append(nn.Sequential(*layer))
+        else:
+            assert False
+
+        self.layers = nn.Sequential(*layers)
+        self.with_cp = with_cp
+
+    def forward(self, x):
+        """
+        Args:
+            x: (B, C=64, Dy, Dx)
+        Returns:
+            feats: List[
+                (B, 2*C, Dy/2, Dx/2),
+                (B, 4*C, Dy/4, Dx/4),
+                (B, 8*C, Dy/8, Dx/8),
+            ]
+        """
+        feats = []
+        x_tmp = x
+        for lid, layer in enumerate(self.layers):
+            x_tmp = layer(x_tmp)
+            if lid in self.backbone_output_ids:
+                feats.append(x_tmp)
+        return feats
