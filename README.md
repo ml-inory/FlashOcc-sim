@@ -1,4 +1,6 @@
 # FlashOcc-sim
+
+[English](README_EN.md)
  
 本项目旨在简化[FlashOcc的官方repo](https://github.com/Yzichen/FlashOCC)，不再依赖openmmlab的环境，目前只实现了推理和模型转换的流程。
 
@@ -22,7 +24,7 @@ data
 ---- v1.0-mini  
 
 
-## 模型
+## 模型转换(PyTorch->ONNX)
 
 已提前转换好，从[这里](https://github.com/ml-inory/FlashOcc-sim/releases/download/v1.0/bevdet_ax.onnx)下载
 
