@@ -28,10 +28,12 @@ class FPN_LSS(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels * channels_factor, kernel_size=3, padding=1, bias=False),
             # build_norm_layer(norm_cfg, out_channels * channels_factor)[1],
+            nn.BatchNorm2d(out_channels * channels_factor),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels * channels_factor, out_channels * channels_factor, kernel_size=3,
                       padding=1, bias=False),
             # build_norm_layer(norm_cfg, out_channels * channels_factor)[1],
+            nn.BatchNorm2d(out_channels * channels_factor),
             nn.ReLU(inplace=True),
         )
 
@@ -40,6 +42,7 @@ class FPN_LSS(nn.Module):
                 nn.Upsample(scale_factor=extra_upsample, mode='bilinear', align_corners=True),
                 nn.Conv2d(out_channels * channels_factor, out_channels, kernel_size=3, padding=1, bias=False),
                 # build_norm_layer(norm_cfg, out_channels)[1],
+                nn.BatchNorm2d(out_channels),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(out_channels, out_channels, kernel_size=1, padding=0)
             )
@@ -49,6 +52,7 @@ class FPN_LSS(nn.Module):
             self.lateral_conv = nn.Sequential(
                 nn.Conv2d(lateral, lateral, kernel_size=1, padding=0, bias=False),
                 # build_norm_layer(norm_cfg, lateral)[1],
+                nn.BatchNorm2d(lateral),
                 nn.ReLU(inplace=True)
             )
 

@@ -23,6 +23,10 @@ data
 
 已提前转换好，从[这里](https://github.com/ml-inory/FlashOcc-sim/releases/download/v1.0/bevdet_ax.onnx)下载
 
+如果需要转换自己修改的模型，请参考pth_model.py和export_onnx.py，目前只支持flashocc-r50-M0的配置。
+将官方repo的[checkpoint](https://drive.google.com/file/d/14my3jdqiIv6VIrkozQ6-ruEcBOPVlWGJ/view?usp=sharing)下载到根目录，
+运行`python export_onnx.py`即可得到bevdet_ax.onnx
+
 ## 运行
 
 `python main.py --img 图片路径`

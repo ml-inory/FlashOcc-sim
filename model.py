@@ -6,7 +6,7 @@ import onnxruntime, onnx
 from onnxruntime_extensions import PyCustomOpDef, onnx_op, get_library_path
 
 
-@onnx_op(op_type="BEVPoolV2",
+@onnx_op(op_type="AxBevPool",
          inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32],
          outputs=[PyCustomOpDef.dt_float],
         #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
@@ -61,19 +61,6 @@ def AxBevPool(depth, feat, ranks_depth, ranks_feat, ranks_bev, n_points):
     r = r_scatter.reshape(B, oD, oW, oH, C).numpy()
 
     return r
-
-
-@onnx_op(op_type="AxFullyConnected",
-         inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_float],
-         outputs=[PyCustomOpDef.dt_float],
-        #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
-         )
-def AxFullyConnected(x, w, b):
-    t_x = torch.tensor(x, dtype=torch.float64)
-    t_w = torch.tensor(w, dtype=torch.float64)
-    t_b = torch.tensor(b, dtype=torch.float64)
-    y = torch.nn.functional.linear(t_x, t_w, t_b).numpy()
-    return y
 
 
 class LSSViewTransformer:
