@@ -22,6 +22,11 @@ class LSSViewTransformer(nn.Module):
         x = self.depth_net(x)
         depth_digit = x[:, :self.D, ...]
         tran_feat = x[:, self.D:self.D + self.out_channels, ...]
-        depth = depth_digit.softmax(dim=1).unsqueeze(0)
-        feat = tran_feat.permute((0, 2, 3, 1)).unsqueeze(0)
+
+        depth = depth_digit.softmax(dim=1)
+        depth = depth.reshape((1,6,44,16,44))
+
+        feat = tran_feat.permute((0, 2, 3, 1))
+        feat = feat.reshape((1,6,16,44,64))
+
         return depth, feat

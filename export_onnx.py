@@ -3,7 +3,8 @@ import torchvision
 from pth_model import PthModel
 from ops.bevpoolv2 import BEVPoolV2
 import onnx
-from onnx import helper
+from onnx import helper, TensorProto
+from onnxsim import simplify
 
 
 def fix_state_dict(state_dict):
@@ -26,7 +27,7 @@ def fix_state_dict(state_dict):
 
 def load_pth_model(cpkt="flashocc-r50-M0-256x704.pth"):
     model = PthModel()
-    checkpoint = torch.load("flashocc-r50-M0-256x704.pth")
+    checkpoint = torch.load("flashocc-r50-M0-256x704.pth", map_location=torch.device("cpu"))
     state_dict = fix_state_dict(checkpoint["state_dict"])
     model.load_state_dict(state_dict)
     model.eval()
@@ -52,6 +53,7 @@ torch.onnx.export(
     model,
     onnx_inputs,
     "bevdet_ax.onnx",
+    dynamic_axes=None,
     input_names=input_names,
     output_names=output_names,
     export_params=True,
@@ -60,21 +62,27 @@ torch.onnx.export(
     export_modules_as_functions={BEVPoolV2}
 )
 
-
 onnx_model = onnx.load("bevdet_ax.onnx")
-graph = onnx_model.graph
+model_simp, check = simplify(onnx_model)
+assert check, "Simplified ONNX model could not be validated"
+
+graph = model_simp.graph
 for i, node in enumerate(graph.node):
     if node.op_type == "BEVPoolV2":
-        ax_bev = helper.make_node(op_type="AxBevPool", 
+        ax_bev = helper.make_node(op_type="BEVPoolV2", 
                               name="bev_pool_v2", 
-                              inputs=["/img_view_transformer/Unsqueeze_output_0", 
-                                      "/img_view_transformer/Unsqueeze_1_output_0", 
+                              inputs=["/img_view_transformer/Reshape_output_0", 
+                                      "/img_view_transformer/Reshape_1_output_0", 
                                       "ranks_depth", "ranks_feat", "ranks_bev", "n_points"], 
                               outputs=["/bevpool/BEVPoolV2_output_0"], 
                               domain="ai.onnx.contrib",
                               bev_feat_shape=(1,1,200,200,64))
-        graph.node.append(ax_bev)
+        shape_info = helper.make_tensor_value_info(ax_bev.output[0], TensorProto.FLOAT, [1,1,200,200,64])
+        graph.value_info.append(shape_info)
+        # graph.node.append(ax_bev)
         del graph.node[i]
+        graph.node.insert(i, ax_bev)
+        break
 
-onnx.save(onnx_model, "bevdet_ax.onnx")
+onnx.save(model_simp, "bevdet_ax.onnx")
 print("Export model to bevdet_ax.onnx")   

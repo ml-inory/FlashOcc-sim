@@ -1,3 +1,4 @@
+glob
 torch
 numpy
 opencv-python
@@ -7,3 +8,4 @@ pyquaternion
 onnx
 onnxruntime
 onnxruntime_extensions
+onnxsim

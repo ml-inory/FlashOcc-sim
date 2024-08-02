@@ -6,7 +6,7 @@ import onnxruntime, onnx
 from onnxruntime_extensions import PyCustomOpDef, onnx_op, get_library_path
 
 
-@onnx_op(op_type="AxBevPool",
+@onnx_op(op_type="BEVPoolV2",
          inputs=[PyCustomOpDef.dt_float, PyCustomOpDef.dt_float, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32, PyCustomOpDef.dt_int32],
          outputs=[PyCustomOpDef.dt_float],
         #  attrs={"output_width": PyCustomOpDef.dt_int32, "output_height": PyCustomOpDef.dt_int32, "output_z": PyCustomOpDef.dt_int32}
