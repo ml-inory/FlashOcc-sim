@@ -33,6 +33,15 @@ data
 运行`python export_onnx.py`即可得到bevdet_ax.onnx
 
 
+## 模型转换(ONNX->AX650)
+
+flashocc_axera.json 为转换板上模型所用的配置文件，其中的量化校准数据集需要通过脚本生成。  
+
+运行`python gen_calib_dataset.py`可得到calib_dataset文件夹，此为用于转换AX650板上模型的量化数据集，将其压缩成zip档，修改flashocc_axera.json中的calibration_dataset为此zip档的路径。
+
+随后通过pulsar2工具链即可得到板端模型。
+
+
 ## 运行
 
 `python main.py --img 图片路径`
