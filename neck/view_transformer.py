@@ -24,9 +24,9 @@ class LSSViewTransformer(nn.Module):
         tran_feat = x[:, self.D:self.D + self.out_channels, ...]
 
         depth = depth_digit.softmax(dim=1)
-        depth = depth.reshape((1,6,44,16,44))
+        depth = depth.reshape((1, 6,self.D,16,self.D))
 
         feat = tran_feat.permute((0, 2, 3, 1))
-        feat = feat.reshape((1,6,16,44,64))
+        feat = feat.reshape((1, 6,16,self.D,64))
 
         return depth, feat

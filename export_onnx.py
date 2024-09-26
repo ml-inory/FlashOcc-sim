@@ -35,54 +35,33 @@ def load_pth_model(cpkt="flashocc-r50-M0-256x704.pth"):
 
  
 img = torch.randn(6, 3, 256, 704)
-ranks_depth = torch.randint(low=0, high=185856, size=(185856,), dtype=torch.int32)
-ranks_feat = torch.randint(low=0, high=256, size=(185856,), dtype=torch.int32)
-ranks_bev = torch.randint(low=0, high=256, size=(185856,), dtype=torch.int32)
-n_points = torch.randint(low=0, high=185856, size=(1,), dtype=torch.int32)
+indices_depth = torch.randint(low=0, high=185856, size=(800000,), dtype=torch.int32)
+indices_feat = torch.randint(low=0, high=185856 // 64, size=(800000,), dtype=torch.int32)
 
-onnx_inputs = (img, ranks_depth, ranks_feat, ranks_bev, n_points)
+onnx_inputs = (img, indices_depth, indices_feat,)
 
 input_names = [
-    'img', 'ranks_depth', 'ranks_feat', 'ranks_bev',
-    'n_points'
+    'img', 'indices_depth', 'indices_feat'
 ]
 output_names = ['cls_occ_label']
+model_name = "bevdet_axmaxn.onnx"
 
 model = load_pth_model()
 torch.onnx.export(
     model,
     onnx_inputs,
-    "bevdet_ax.onnx",
+    model_name,
     dynamic_axes=None,
     input_names=input_names,
     output_names=output_names,
     export_params=True,
     do_constant_folding=True,
-    opset_version=16,
-    export_modules_as_functions={BEVPoolV2}
+    opset_version=16
 )
 
-onnx_model = onnx.load("bevdet_ax.onnx")
+onnx_model = onnx.load(model_name)
 model_simp, check = simplify(onnx_model)
 assert check, "Simplified ONNX model could not be validated"
 
-graph = model_simp.graph
-for i, node in enumerate(graph.node):
-    if node.op_type == "BEVPoolV2":
-        ax_bev = helper.make_node(op_type="BEVPoolV2", 
-                              name="bev_pool_v2", 
-                              inputs=["/img_view_transformer/Reshape_output_0", 
-                                      "/img_view_transformer/Reshape_1_output_0", 
-                                      "ranks_depth", "ranks_feat", "ranks_bev", "n_points"], 
-                              outputs=["/bevpool/BEVPoolV2_output_0"], 
-                              domain="ai.onnx.contrib",
-                              bev_feat_shape=(1,1,200,200,64))
-        shape_info = helper.make_tensor_value_info(ax_bev.output[0], TensorProto.FLOAT, [1,1,200,200,64])
-        graph.value_info.append(shape_info)
-        # graph.node.append(ax_bev)
-        del graph.node[i]
-        graph.node.insert(i, ax_bev)
-        break
-
-onnx.save(model_simp, "bevdet_ax.onnx")
-print("Export model to bevdet_ax.onnx")   
+onnx.save(model_simp, model_name)
+print(f"Export model to {model_name}")   

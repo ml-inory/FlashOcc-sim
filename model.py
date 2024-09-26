@@ -1,6 +1,7 @@
 import numpy as np
 import json
 import torch
+from torch.nn.utils.rnn import pad_sequence
 from PIL import Image
 import onnxruntime, onnx
 from onnxruntime_extensions import PyCustomOpDef, onnx_op, get_library_path
@@ -241,6 +242,116 @@ class LSSViewTransformer:
         return ranks_depth.int().contiguous().numpy(), ranks_feat.int().contiguous().numpy(), ranks_bev.int().contiguous().numpy(), torch.tensor([n_points]).int().numpy()
 
 
+    def voxel_pooling_prepare_axmaxn(self, coor, save_indices=False):
+        """Data preparation for voxel pooling.
+        Args:
+            coor (torch.tensor): Coordinate of points in the lidar space in
+                shape (B, N, D, H, W, 3).
+        Returns:
+            tuple[torch.tensor]:
+                ranks_bev: Rank of the voxel that a point is belong to in shape (N_points, ),
+                    rank介于(0, B*Dx*Dy*Dz-1).
+                ranks_depth: Reserved index of points in the depth space in shape (N_Points),
+                    rank介于(0, B*N*D*fH*fW-1).
+                ranks_feat: Reserved index of points in the feature space in shape (N_Points),
+                    rank介于(0, B*N*fH*fW-1).
+                interval_starts: (N_pillar, )
+                interval_lengths: (N_pillar, )
+        """
+        B, N, D, H, W, _ = coor.shape
+        num_points = B * N * D * H * W
+        # record the index of selected points for acceleration purpose
+        ranks_depth = torch.range(
+            0, num_points - 1, dtype=torch.int, device=coor.device)    # (B*N*D*H*W, ), [0, 1, ..., B*N*D*fH*fW-1]
+        ranks_feat = torch.range(
+            0, num_points // D - 1, dtype=torch.int, device=coor.device)   # [0, 1, ...,B*N*fH*fW-1]
+        ranks_feat = ranks_feat.reshape(B, N, 1, H, W)
+        ranks_feat = ranks_feat.expand(B, N, D, H, W).flatten()     # (B*N*D*fH*fW, )
+        # convert coordinate into the voxel space
+        # ((B, N, D, fH, fW, 3) - (3, )) / (3, ) --> (B, N, D, fH, fW, 3)   3:(x, y, z)  grid coords.
+        coor = ((coor - self.grid_lower_bound.to(coor)) /
+                self.grid_interval.to(coor))
+        coor = coor.long().view(num_points, 3)      # (B, N, D, fH, fW, 3) --> (B*N*D*fH*fW, 3)
+        # (B, N*D*fH*fW) --> (B*N*D*fH*fW, 1)
+        batch_idx = torch.range(0, B - 1).reshape(B, 1). \
+            expand(B, num_points // B).reshape(num_points, 1).to(coor)
+        coor = torch.cat((coor, batch_idx), 1)      # (B*N*D*fH*fW, 4)   4: (x, y, z, batch_id)
+        # filter out points that are outside box
+        kept = (coor[:, 0] >= 0) & (coor[:, 0] < self.grid_size[0]) & \
+               (coor[:, 1] >= 0) & (coor[:, 1] < self.grid_size[1]) & \
+               (coor[:, 2] >= 0) & (coor[:, 2] < self.grid_size[2])
+        if len(kept) == 0:
+            return None, None, None, None, None
+        # (N_points, 4), (N_points, ), (N_points, )
+        coor, ranks_depth, ranks_feat = \
+            coor[kept], ranks_depth[kept], ranks_feat[kept]
+        # get tensors from the same voxel next to each other
+        ranks_bev = coor[:, 3] * (
+            self.grid_size[2] * self.grid_size[1] * self.grid_size[0])
+        ranks_bev += coor[:, 2] * (self.grid_size[1] * self.grid_size[0])
+        ranks_bev += coor[:, 1] * self.grid_size[0] + coor[:, 0]
+        order = ranks_bev.argsort()
+        # (N_points, ), (N_points, ), (N_points, )
+        ranks_bev, ranks_depth, ranks_feat = \
+            ranks_bev[order], ranks_depth[order], ranks_feat[order]
+        kept = torch.ones(
+            ranks_bev.shape[0], device=ranks_bev.device, dtype=torch.bool)
+        kept[1:] = ranks_bev[1:] != ranks_bev[:-1]
+        interval_starts = torch.where(kept)[0].int()
+        if len(interval_starts) == 0:
+            return None, None, None, None, None
+        interval_lengths = torch.zeros_like(interval_starts)
+        interval_lengths[:-1] = interval_starts[1:] - interval_starts[:-1]
+        interval_lengths[-1] = ranks_bev.shape[0] - interval_starts[-1]
+        self.maxN = 20
+        if self.maxN != None:
+            from torch.nn.utils.rnn import pad_sequence
+            index_ = torch.arange(0,ranks_bev.shape[0]) 
+            index_ = list(torch.split(index_,interval_lengths.tolist(),dim = 0))
+            length = len(index_)
+            index_ = pad_sequence(index_,batch_first= True)
+            index_ = index_[:,0:self.maxN]
+            index_=index_.reshape(length*self.maxN)
+            index = torch.nonzero(index_)
+            temp = torch.zeros(1)
+            index_ = index_[index].squeeze(1)
+            index_ = torch.cat((temp,index_),0).long()
+            ranks_feat = ranks_feat[index_]
+            ranks_depth = ranks_depth[index_]
+            ranks_bev = ranks_bev[index_]
+            kept = torch.ones(
+                ranks_bev.shape[0], device=ranks_bev.device, dtype=torch.bool)
+            kept[1:] = ranks_bev[1:] != ranks_bev[:-1]
+            interval_starts = torch.where(kept)[0].int()
+            if len(interval_starts) == 0:
+                return None, None, None, None, None
+            interval_lengths = torch.zeros_like(interval_starts)
+            interval_lengths[:-1] = interval_starts[1:] - interval_starts[:-1]
+            interval_lengths[-1] = ranks_bev.shape[0] - interval_starts[-1]
+            if save_indices:
+                ranks_feat_np = ranks_feat.detach()
+                ranks_depth_np = ranks_depth.detach()
+                ranks_feat_np = pad_sequence(list(torch.split(ranks_feat_np,interval_lengths.tolist(),dim = 0)),batch_first = True,padding_value = N*W*H)[:,0:self.maxN]
+                ranks_depth_np = pad_sequence(list(torch.split(ranks_depth_np,interval_lengths.tolist(),dim = 0)),batch_first = True,padding_value = N*W*H*D)[:,0:self.maxN]
+                maxN_bev_feats = torch.zeros([int(B*self.grid_size[0]*self.grid_size[1])*self.maxN]).to(ranks_feat_np).int()
+                maxN_bev_depth = torch.zeros([int(B*self.grid_size[0]*self.grid_size[1])*self.maxN]).to(ranks_depth_np).int()
+                maxN_bev_feats = maxN_bev_feats + N*W*H
+                maxN_bev_depth = maxN_bev_depth + N*W*H*D
+                bev_locs = ranks_bev[interval_starts.long()].long().detach()
+                off_set = torch.arange(0,self.maxN).to(bev_locs).reshape(1,self.maxN)
+                off_set =torch.repeat_interleave(off_set,bev_locs.shape[0],dim = 0).view(-1)
+                bev_locs =torch.repeat_interleave(bev_locs,self.maxN,dim = 0)
+                bev_locs = bev_locs*self.maxN + off_set
+                maxN_bev_feats = maxN_bev_feats.scatter_(0,index =bev_locs,src= ranks_feat_np.reshape(-1) ).reshape(int(B*self.grid_size[0]*self.grid_size[1]),self.maxN)
+                maxN_bev_depth = maxN_bev_depth.scatter_(0,index =bev_locs,src= ranks_depth_np.reshape(-1) ).reshape(int(B*self.grid_size[0]*self.grid_size[1]),self.maxN)
+                maxN_bev_feats = torch.flatten(maxN_bev_feats)
+                maxN_bev_depth = torch.flatten(maxN_bev_depth)
+                return maxN_bev_depth.int().contiguous(), maxN_bev_feats.int().contiguous()
+        return ranks_bev.int().contiguous(), ranks_depth.int().contiguous(
+        ), ranks_feat.int().contiguous(), interval_starts.int().contiguous(
+        ), interval_lengths.int().contiguous()
+    
+
 class Model:
     def __init__(self, onnx_file, config):
         so = onnxruntime.SessionOptions()
@@ -273,7 +384,7 @@ class Model:
     def get_bev_pool_input(self, inputs):
         inputs = self.prepare_inputs(inputs)
         coor = self.img_view_transformer.get_lidar_coor(*inputs[1:7])
-        return self.img_view_transformer.voxel_pooling_prepare_ax(coor)
+        return self.img_view_transformer.voxel_pooling_prepare_axmaxn(coor, save_indices=True)
     
     def forward(self, inputs):
         return self.onnx.run([], inputs)[0].astype(np.int32)[0]

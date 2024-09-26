@@ -19,6 +19,7 @@ class PthModel(nn.Module):
         super(PthModel, self).__init__()
 
         self.numC_Trans = 64
+        self.maxN = 20
         self.img_backbone = ResNet50()
         self.img_neck = CustomFPN([1024, 2048], 256)
         self.img_view_transformer = LSSViewTransformer(in_channels=256, out_channels=self.numC_Trans)
@@ -27,12 +28,12 @@ class PthModel(nn.Module):
         self.img_bev_encoder_neck = FPN_LSS(in_channels=self.numC_Trans * 8 + self.numC_Trans * 2, out_channels=128)
         self.occ_head = BEVOCCHead2D(in_dim=128, out_dim=128, Dz=16, use_mask=True, num_classes=18, use_predicter=True)
 
-    def forward(self, img, ranks_depth, ranks_feat, ranks_bev, n_points):
+    def forward(self, img, indices_depth, indices_feat):
         img_feats = self.img_backbone(img)
         x = self.img_neck(img_feats)
         depth, feat = self.img_view_transformer(x)
 
-        x = self.bevpool(ranks_depth, ranks_feat, ranks_bev, n_points, depth, feat)
+        x = self.bevpool(depth, feat, indices_depth, indices_feat, self.maxN)
         x = x.permute((0,4,1,2,3)).reshape(1, 64, 200, 200)
 
         feats = self.img_bev_encoder_backbone(x)

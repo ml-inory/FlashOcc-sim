@@ -19,37 +19,37 @@ class BEVPoolV2(nn.Module):
         super(BEVPoolV2, self).__init__()
         self.bev_feat_shape = list(bev_feat_shape)
 
-
-    def forward(self, ranks_depth, ranks_feat, ranks_bev, n_points, depth, feat):
-        ranks_depth = ranks_depth[:n_points]
-        ranks_feat = ranks_feat[:n_points]
-        ranks_bev = ranks_bev[:n_points]
-
-        B, N, _, iH, iW = depth.shape
+    
+    def forward(self, depth, feat, ranks_depth, ranks_feat, maxn):
+        """
+        Args:
+            depth: (B, N, D, fH, fW)
+            feat:  (B, N, fH, fW, C)
+            ranks_depth: (D_Z * D_Y * D_X * maxn),
+            ranks_feat:  (D_Z * D_Y * D_X * maxn),
+            bev_feat_shape: (B, D_Z, D_Y, D_X, C)
+        Returns:
+            r: bev feature in shape (B, C, Dz, Dy, Dx)
+        """
+        B, N, D, iH, iW = depth.shape
         C = feat.shape[-1]
-        _, oD, oH, oW, _ = self.bev_feat_shape
-
+        _, oD, oW, oH, _ = self.bev_feat_shape
         # flatten inputs
-        depth_1d = depth.flatten()
+        depth_2d = depth.reshape(B * N * D * iH * iW, 1)
         feat_2d = feat.reshape(B * N * iH * iW, C)
-
+        depth_2d = torch.cat((depth_2d, torch.zeros([1, 1], dtype=torch.float32, device=depth_2d.device)), 0)
+        feat_2d = torch.cat((feat_2d, torch.zeros([1, 64], dtype=torch.float32, device=feat_2d.device)), 0)
         # gather depth and feat
-        gathered_depth_1d = torch.gather(input=depth_1d, dim=0, index=ranks_depth.long())
-        ranks_feat = ranks_feat.reshape(ranks_feat.shape[0], 1).repeat(1, C)
-        gathered_feat = torch.gather(input=feat_2d, dim=0, index=ranks_feat.long())
-
+        # gathered_depth = torch.gather(input=depth_2d, dim=0, index=ranks_depth.long())
+        # gathered_feat = torch.gather(input=feat_2d, dim=0, index=ranks_feat.long())
+        gathered_depth = torch.index_select(depth_2d, 0, ranks_depth)
+        gathered_feat = torch.index_select(feat_2d, 0, ranks_feat)
         # subtract zp and mul
-        gathered_depth_2d = gathered_depth_1d.reshape(gathered_depth_1d.shape[0], 1)
-        r_mul = gathered_depth_2d * gathered_feat
-
-        # init with zeros
-        r_scatter = torch.full(fill_value=0, size=(B * oD * oW * oH, C), dtype=torch.float32, device=r_mul.device)
-
+        r_mul = gathered_depth * gathered_feat
         # scatter_add
-        ranks_bev = ranks_bev.reshape(ranks_bev.shape[0], 1).repeat(1, C)
-        r_scatter = torch.scatter_add(input=r_scatter, dim=0, index=ranks_bev.long(), src=r_mul)
-
-        # reshape
-        r = r_scatter.reshape(B, oD, oW, oH, C)
-
+        r_mul = r_mul.reshape(oD, oW, oH, maxn, C)
+        r_scatter = r_mul.sum(dim=3, keepdim=True)
+        # permute
+        r = r_scatter.permute(3, 0, 1, 2, 4)
         return r
+    
