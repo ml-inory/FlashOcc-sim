@@ -9,3 +9,4 @@ onnx
 onnxruntime
 onnxruntime_extensions
 onnxsim
+nuscenes_devkit
