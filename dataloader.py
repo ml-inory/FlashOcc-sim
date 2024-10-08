@@ -4,12 +4,16 @@ import json
 import torch
 from PIL import Image
 from pyquaternion import Quaternion
+from nuscenes.nuscenes import NuScenes
 
 
 class Dataloader:
     def __init__(self, data_root, config):
         self.data_root = data_root
         self.config = config
+
+        self.nusc = NuScenes(version="v1.0-mini", dataroot=self.data_root)
+        self.sensor_types = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT")
 
         json_root = os.path.join(self.data_root, 'v1.0-mini')
         calibrated_sensor_path = os.path.join(json_root, 'calibrated_sensor.json')
@@ -74,22 +78,22 @@ class Dataloader:
     def load(self, filename):
         basename = os.path.basename(filename)
         sample_token = self.get_sample_token(filename)
+        sample = self.nusc.get("sample", sample_token)
         datas = self.get_sample_datas(sample_token)
         info = {}
-        for data in datas:
+
+        for sensor_type in self.sensor_types:
+            data = self.nusc.get("sample_data", sample["data"][sensor_type])
+
             calibrated_sensor_token = data['calibrated_sensor_token']
             ego_pose_token = data['ego_pose_token']
 
-            sensor_type = self.get_sensor_type(calibrated_sensor_token)
             data['sensor_type'] = sensor_type
             data.update(self.get_sensor_data(calibrated_sensor_token))
             data.update(self.get_ego_data(ego_pose_token))
             data['filename'] = os.path.join(self.data_root, data['filename'])
 
             info[sensor_type] = data
-
-            if basename in data['filename']:
-                info['cur_type'] = sensor_type
 
         return self.prepare_image_inputs(info), info
     

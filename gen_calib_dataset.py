@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument("--config", help="test config file path", default="config.json")
     parser.add_argument("--onnx", help="onnx file", default="bevdet_ax.onnx")
     parser.add_argument("--data_root", help="data root", default="data/nuscenes")
-    parser.add_argument("--num", help="num of data", default=20)
+    parser.add_argument("--num", help="num of data", type=int, default=20)
     parser.add_argument("--no_shuffle", help="whether to shuffle, default shuffle", action="store_true")
     parser.add_argument("--output_dir", help="output path", default="calib_dataset")
     args = parser.parse_args()
