@@ -35,6 +35,8 @@ data
 
 ## 模型转换(ONNX->AX650)
 
+已提前转换好，从[这里](https://github.com/ml-inory/FlashOcc-sim/releases/download/v1.0/flashocc_argmax.axmodel)下载
+
 flashocc_axera.json 为转换板上模型所用的配置文件，其中的量化校准数据集需要通过脚本生成。  
 
 运行`python gen_calib_dataset.py`可得到calib_dataset文件夹，此为用于转换AX650板上模型的量化数据集，将其压缩成zip档，修改flashocc_axera.json中的calibration_dataset为此zip档的路径。
